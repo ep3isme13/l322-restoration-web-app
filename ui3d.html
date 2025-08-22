@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>L322 Restoration Console</title>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.154.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.154.0/examples/js/controls/OrbitControls.js"></script>
+  <style>
+    html, body { margin:0; padding:0; height:100%; font-family: 'Helvetica Neue', sans-serif; overflow:hidden; }
+    #container { display:flex; height:100%; background:#001f3f; color:#f8f8f8; }
+    #sidebar { width:250px; background:#0a214a; display:flex; flex-direction:column; padding:20px; box-shadow:2px 0 5px rgba(0,0,0,0.5); }
+    #sidebar h2 { margin-top:0; margin-bottom:10px; font-size:20px; }
+    #sidebar ul { list-style:none; padding:0; margin:0; flex:1; overflow-y:auto; }
+    #sidebar li { padding:8px 6px; margin-bottom:4px; border-radius:4px; cursor:pointer; }
+    #sidebar li:hover { background:#173e7a; }
+    #sidebar li.active { background:#002f5e; }
+    #main { flex:1; display:flex; flex-direction:column; }
+    #header { height:60px; background:#001a33; display:flex; align-items:center; justify-content:space-between; padding:0 20px; box-shadow:0 2px 5px rgba(0,0,0,0.5); }
+    #header img { height:40px; }
+    #header h1 { font-size:22px; margin:0 10px; flex:1; }
+    #viewer { flex:1; position:relative; }
+    #details { height:200px; background:#0a214a; padding:20px; overflow-y:auto; }
+    #details h3 { margin-top:0; }
+    /* scrollbars */
+    ::-webkit-scrollbar { width:6px; height:6px; }
+    ::-webkit-scrollbar-thumb { background:#555; border-radius:3px; }
+    ::-webkit-scrollbar-track { background:#1d3557; }
+  </style>
+</head>
+<body>
+<div id="container">
+  <div id="sidebar">
+    <h2>Modules</h2>
+    <ul id="moduleList"></ul>
+  </div>
+  <div id="main">
+    <div id="header">
+      <img src="https://upload.wikimedia.org/wikipedia/en/8/8e/Land_Rover_logo.svg" alt="Land Rover logo">
+      <h1>L322 Restoration Console</h1>
+    </div>
+    <div id="viewer"></div>
+    <div id="details">
+      <h3 id="detailTitle">Select a module</h3>
+      <p id="detailBody">Click on a module from the list or interact with the 3D model to view its wiring details and retrofit notes.</p>
+    </div>
+  </div>
+</div>
+<script>
+  // 3D viewer setup
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, window.innerWidth / (window.innerHeight-200), 0.1, 1000);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const viewer = document.getElementById('viewer');
+  renderer.setSize(viewer.clientWidth, viewer.clientHeight);
+  viewer.appendChild(renderer.domElement);
+
+  // Add ambient and directional light
+  const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambient);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+  dirLight.position.set(5, 10, 7.5);
+  scene.add(dirLight);
+
+  // Create a simple vehicle proxy: a box geometry with metallic blue
+  const geometry = new THREE.BoxGeometry(4, 2, 8);
+  const material = new THREE.MeshPhongMaterial({ color: 0x001f3f, specular: 0x555555, shininess: 50 });
+  const vehicle = new THREE.Mesh(geometry, material);
+  scene.add(vehicle);
+
+  // Controls
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(0, 0, 0);
+  camera.position.set(8, 5, 12);
+  controls.update();
+
+  // Module hotspots positions relative to the vehicle geometry
+  const moduleHotspots = {
+    'Audio Head Unit (Denso)': { position: new THREE.Vector3(0, 0.5, 3), info: 'Located in the dash center stack / glovebox retrofit. Retain for diagnostics only.'},
+    'Touch Screen Display (Denso)': { position: new THREE.Vector3(0, 0.8, 4), info: 'Upper glovebox retrofit. Retain for UI/diagnostics.'},
+    'Power Amplifier (OEM)': { position: new THREE.Vector3(-1, -0.5, -3), info: 'Left side of luggage compartment. Removed and replaced by Alpine 4\u2011ch + Boss sub.'},
+    'MOST Diagnostic Bypass': { position: new THREE.Vector3(1, -0.5, -4), info: 'Install optical bypass when modules removed.'}
+  };
+
+  // Create small spheres to mark module positions
+  const hotspotMaterial = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+  const hotspotGeometry = new THREE.SphereGeometry(0.15, 16, 16);
+  const hotspots = {};
+  for (const name in moduleHotspots) {
+    const sphere = new THREE.Mesh(hotspotGeometry, hotspotMaterial);
+    sphere.position.copy(moduleHotspots[name].position);
+    sphere.name = name;
+    scene.add(sphere);
+    hotspots[name] = sphere;
+  }
+
+  // Raycaster for interactivity
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  renderer.domElement.addEventListener('pointerdown', (event) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(Object.values(hotspots));
+    if (intersects.length > 0) {
+      const obj = intersects[0].object;
+      selectModule(obj.name);
+    }
+  });
+
+  // Populate module list in sidebar
+  const moduleList = document.getElementById('moduleList');
+  Object.keys(moduleHotspots).forEach((modName) => {
+    const li = document.createElement('li');
+    li.textContent = modName;
+    li.addEventListener('click', () => selectModule(modName));
+    moduleList.appendChild(li);
+  });
+
+  let selectedName = null;
+  function selectModule(name) {
+    selectedName = name;
+    // highlight list
+    Array.from(moduleList.children).forEach((child) => {
+      child.classList.toggle('active', child.textContent === name);
+    });
+    // show details
+    document.getElementById('detailTitle').textContent = name;
+    document.getElementById('detailBody').textContent = moduleHotspots[name].info;
+    // animate camera to hotspot
+    const target = moduleHotspots[name].position;
+    // smooth tween
+    controls.target.copy(target);
+    camera.position.set(target.x + 6, target.y + 3, target.z + 6);
+    controls.update();
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    vehicle.rotation.y += 0.003;
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  // Handle resize
+  window.addEventListener('resize', () => {
+    renderer.setSize(viewer.clientWidth, viewer.clientHeight);
+    camera.aspect = viewer.clientWidth / viewer.clientHeight;
+    camera.updateProjectionMatrix();
+  });
+
+</script>
+</body>
+</html>
