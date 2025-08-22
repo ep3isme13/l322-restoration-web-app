@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    h1 { color: #0a3d62; }
+  </style>
+</head>
+<body>
+  <h1>L322 Restoration & Retrofit</h1>
+  <p id="status">Loading…</p>
+  <script>
+    google.script.run.withSuccessHandler(function(state) {
+      document.getElementById('status').innerText =
+        'Welcome to the L322 project: ' + (state.meta ? state.meta.project : 'Ready');
+    }).rpcGetState();
+  </script>
+</body>
+</html>
